@@ -27,9 +27,9 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global pull.rebase false
           
-          # 安装工具
-          echo "📦 安装 terser 与 javascript-obfuscator..."
-          npm install -g terser javascript-obfuscator
+          # 安装必要的工具
+          echo "📦 安装代码处理工具..."
+          npm install -g terser
 
       - name: 🔍 检查文件状态
         id: check_files
@@ -45,7 +45,7 @@ jobs:
             echo "HAS_VERSION=false" >> $GITHUB_ENV
           fi
           
-          # 文件缺失时强制更新
+          # 如果有任何一个文件不存在，就强制更新
           if [[ "$HAS_VERSION" == "false" || ! -f "source.js" || ! -f "_worker.js" ]]; then
             echo "🔄 检测到文件缺失，需要强制更新"
             echo "FORCE_UPDATE=true" >> $GITHUB_ENV
@@ -107,73 +107,81 @@ jobs:
           cp /tmp/remote_worker.js source.js
           echo "✅ source.js 保存成功"
 
-      - name: 🔧 代码混淆与压缩
+      - name: 🔧 代码压缩和优化
         if: env.UPDATE_NEEDED == 'true'
         run: |
-          echo "🔧 $(date '+%Y-%m-%d %H:%M:%S') - 开始代码混淆与压缩..."
-
-          # Step 1: terser 预压缩
-          echo "🛠️ 使用 terser 初步压缩..."
-          terser /tmp/remote_worker.js --compress --mangle --output /tmp/min_worker.js
-
-          # Step 2: javascript-obfuscator 混淆（方案2）
-          echo "🧩 使用 javascript-obfuscator 混淆..."
-          # javascript-obfuscator 混淆（已修正选项名）
-          # javascript-obfuscator 混淆（已修正选项名）
-          javascript-obfuscator /tmp/min_worker.js --output _worker.js --compact true \
-            --control-flow-flattening true \
-            --control-flow-flattening-threshold 0.75 \
-            --dead-code-injection true \
-            --dead-code-injection-threshold 0.4 \
-            --disable-console-output true \
-            --identifier-names-generator hexadecimal \
-            --string-array true \
-            --string-array-encoding rc4 \
-            --string-array-threshold 0.8 \
-            --string-array-rotate true \
-            --string-array-shuffle true \
-            --transform-object-keys true
-
-
-
-          # Step 3: 检查结果
+          echo "🔧 $(date '+%Y-%m-%d %H:%M:%S') - 开始代码压缩..."
+          
+          # 方法1: 使用 terser 进行压缩
+          echo "🛠️ 使用 terser 压缩..."
+          terser /tmp/remote_worker.js \
+            --compress \
+            --mangle \
+            --output _worker.js
+          
+          # 检查压缩后文件大小
           if [[ -f "_worker.js" ]]; then
             COMPRESSED_SIZE=$(stat -c%s _worker.js 2>/dev/null || stat -f%z _worker.js 2>/dev/null)
-            echo "📏 混淆后大小: $COMPRESSED_SIZE 字节"
+            echo "📏 压缩后大小: $COMPRESSED_SIZE 字节"
+            
+            # 如果文件仍然很大，使用更激进的压缩
+            if [[ $COMPRESSED_SIZE -gt 500000 ]]; then
+              echo "⚠️ 文件仍然较大，使用激进压缩..."
+              terser /tmp/remote_worker.js \
+                --compress passes=3,unsafe=true,unsafe_math=true,unsafe_methods=true \
+                --mangle toplevel=true \
+                --output _worker.js
+              
+              COMPRESSED_SIZE=$(stat -c%s _worker.js 2>/dev/null || stat -f%z _worker.js 2>/dev/null)
+              echo "📏 激进压缩后大小: $COMPRESSED_SIZE 字节"
+            fi
           else
-            echo "❌ 混淆失败，使用原始文件"
+            echo "❌ 压缩失败，使用原始文件"
             cp /tmp/remote_worker.js _worker.js
           fi
-
-          # Step 4: 体积与比例报告
+          
+          # 最终验证
           FINAL_SIZE=$(stat -c%s _worker.js 2>/dev/null || stat -f%z _worker.js 2>/dev/null)
           ORIGINAL_SIZE=$(stat -c%s source.js 2>/dev/null || stat -f%z source.js 2>/dev/null)
           COMPRESSION_RATIO=$(( (FINAL_SIZE * 100) / ORIGINAL_SIZE ))
           
           echo "📊 压缩报告:"
           echo "   • 原始大小: $ORIGINAL_SIZE 字节"
-          echo "   • 混淆后大小: $FINAL_SIZE 字节"
-          echo "   • 变化比例: $COMPRESSION_RATIO%"
-
+          echo "   • 压缩后大小: $FINAL_SIZE 字节"
+          echo "   • 压缩比例: $COMPRESSION_RATIO%"
+          
           if [[ $FINAL_SIZE -gt 1048576 ]]; then
-            echo "⚠️ 警告：文件超过 1MB，可能影响 Cloudflare 部署"
+            echo "⚠️ 警告：文件超过 1MB，可能影响部署"
           fi
 
       - name: 📝 提交更改
         if: env.UPDATE_NEEDED == 'true'
         run: |
           echo "📝 $(date '+%Y-%m-%d %H:%M:%S') - 准备提交更改..."
+          
+          # 记录版本
           echo "$REMOTE_VERSION" > version.txt
+          
+          # 添加文件
           git add source.js _worker.js version.txt
+          
+          # 检查是否有更改
           if git diff --staged --quiet; then
-            echo "ℹ️ 无更改，跳过提交"
+            echo "ℹ️ 没有检测到更改，跳过提交"
             exit 0
           fi
+          
+          # 提交
           git commit -m "🔄 Auto Update Worker
 
-          • 同步最新 Worker 文件（混淆版）
+          • 同步最新 Worker 文件
           • 版本: ${REMOTE_VERSION:0:16}...
-          • 更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
+          • 原始大小: $(stat -c%s source.js 2>/dev/null || stat -f%z source.js 2>/dev/null) 字节
+          • 压缩后大小: $(stat -c%s _worker.js 2>/dev/null || stat -f%z _worker.js 2>/dev/null) 字节
+          • 更新时间: $(date '+%Y-%m-%d %H:%M:%S')
+          
+          [自动同步]"
+          
           git push
           echo "✅ 提交完成"
 
@@ -181,7 +189,7 @@ jobs:
         if: env.UPDATE_NEEDED == 'true'
         run: |
           echo "🎉 $(date '+%Y-%m-%d %H:%M:%S') - 自动更新完成！"
-          echo "::notice title=更新完成::已成功同步、压缩并混淆代码"
+          echo "::notice title=更新完成::已成功同步并压缩代码"
 
       - name: 😴 无需更新
         if: env.UPDATE_NEEDED == 'false'
@@ -195,7 +203,8 @@ jobs:
     permissions:
       actions: write
       contents: read
-    if: always()
+    if: always()  # 无论更新job成功与否都运行清理
+    
     steps:
       - name: 🗑️ 删除旧工作流运行记录
         uses: Mattraks/delete-workflow-runs@v2
@@ -209,4 +218,4 @@ jobs:
       - name: 📊 清理完成通知
         run: |
           echo "🧹 工作流清理完成"
-          echo "::notice title=清理完成::已清理旧运行记录，保留最近3次"
+          echo "::notice title=清理完成::已清理旧工作流运行记录，保留最近3次运行"
