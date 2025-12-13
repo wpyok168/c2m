@@ -89,11 +89,11 @@ export default {
                     return new Response(JSON.stringify(检测代理响应, null, 2), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
                 }
 
-                config_JSON = await 读取config_JSON(env, hosts, userID, env.PATH);
+                config_JSON = await 读取config_JSON(env, host, userID, env.PATH);
 
                 if (访问路径 === 'admin/init') {// 重置配置为默认值
                     try {
-                        config_JSON = await 读取config_JSON(env, hosts, userID, env.PATH, true);
+                        config_JSON = await 读取config_JSON(env, host, userID, env.PATH, true);
                         ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Init_Config', config_JSON));
                         config_JSON.init = '配置已重置为默认值';
                         return new Response(JSON.stringify(config_JSON, null, 2), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
@@ -190,7 +190,7 @@ export default {
             } else if (访问路径 === 'sub') {//处理订阅请求
                 const 订阅TOKEN = await MD5MD5(host + userID);
                 if (url.searchParams.get('token') === 订阅TOKEN) {
-                    config_JSON = await 读取config_JSON(env, hosts, userID, env.PATH);
+                    config_JSON = await 读取config_JSON(env, host, userID, env.PATH);
                     ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Get_SUB', config_JSON));
                     const ua = UA.toLowerCase();
                     const expire = 4102329600;//2099-12-31 到期时间
@@ -519,7 +519,8 @@ async function forwardataTCP(host, portNum, rawData, ws, respHeader, remoteConnW
         connectStreams(newSocket, ws, respHeader, null);
     }
 
-    if (启用SOCKS5反代 && 启用SOCKS5全局反代) {
+    const 验证SOCKS5白名单 = (addr) => SOCKS5白名单.some(p => new RegExp(`^${p.replace(/\*/g, '.*')}$`, 'i').test(addr));
+    if (启用SOCKS5反代 && (启用SOCKS5全局反代 || 验证SOCKS5白名单(host))) {
         try {
             await connecttoPry();
         } catch (err) {
@@ -857,13 +858,14 @@ function 批量替换域名(内容, hosts, 每组数量 = 2) {
     });
 }
 
-async function 读取config_JSON(env, hosts, userID, path, 重置配置 = false) {
-    const host = 随机替换通配符(hosts[0]);
+async function 读取config_JSON(env, hostname, userID, path, 重置配置 = false) {
+    //const host = 随机替换通配符(hostname);
+    const host = hostname;
     const 初始化开始时间 = performance.now();
     const 默认配置JSON = {
         TIME: new Date().toISOString(),
         HOST: host,
-        HOSTS: hosts,
+        HOSTS: [hostname],
         UUID: userID,
         协议类型: "v" + "le" + "ss",
         传输协议: "ws",
@@ -881,7 +883,7 @@ async function 读取config_JSON(env, hosts, userID, path, 重置配置 = false)
             SUB: null,
             SUBNAME: "edge" + "tunnel",
             SUBUpdateTime: 6, // 订阅更新时间（小时）
-            TOKEN: await MD5MD5(hosts[0] + userID),
+            TOKEN: await MD5MD5(hostname + userID),
         },
         订阅转换配置: {
             SUBAPI: "https://SUBAPI.cmliussss.net",
@@ -930,12 +932,13 @@ async function 读取config_JSON(env, hosts, userID, path, 重置配置 = false)
     }
 
     config_JSON.HOST = host;
-    config_JSON.HOSTS = hosts;
+    if (!config_JSON.HOSTS) config_JSON.HOSTS = [hostname];
+    if (env.HOST) config_JSON.HOSTS = (await 整理成数组(env.HOST)).map(h => h.toLowerCase().replace(/^https?:\/\//, '').split('/')[0].split(':')[0]);
     config_JSON.UUID = userID;
     config_JSON.PATH = path ? (path.startsWith('/') ? path : '/' + path) : (config_JSON.反代.SOCKS5.启用 ? ('/' + config_JSON.反代.SOCKS5.启用 + (config_JSON.反代.SOCKS5.全局 ? '://' : '=') + config_JSON.反代.SOCKS5.账号) : (config_JSON.反代.PROXYIP === 'auto' ? '/' : `/proxyip=${config_JSON.反代.PROXYIP}`));
     const TLS分片参数 = config_JSON.TLS分片 == 'Shadowrocket' ? `&fragment=${encodeURIComponent('1,40-60,30-50,tlshello')}` : config_JSON.TLS分片 == 'Happ' ? `&fragment=${encodeURIComponent('3,1,tlshello')}` : '';
     config_JSON.LINK = `${config_JSON.协议类型}://${userID}@${host}:443?security=tls&type=${config_JSON.传输协议}&host=${host}&sni=${host}&path=${encodeURIComponent(config_JSON.启用0RTT ? config_JSON.PATH + '?ed=2560' : config_JSON.PATH) + TLS分片参数}&encryption=none${config_JSON.跳过证书验证 ? '&allowInsecure=1' : ''}#${encodeURIComponent(config_JSON.优选订阅生成.SUBNAME)}`;
-    config_JSON.优选订阅生成.TOKEN = await MD5MD5(hosts[0] + userID);
+    config_JSON.优选订阅生成.TOKEN = await MD5MD5(hostname + userID);
 
     const 初始化TG_JSON = { BotToken: null, ChatID: null };
     config_JSON.TG = { 启用: config_JSON.TG.启用 ? config_JSON.TG.启用 : false, ...初始化TG_JSON };
