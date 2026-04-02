@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   schedule:
     - cron: "0 1 * * *"  # 🕐 每天凌晨1点自动运行
-  workflow_dispatch:      # 🖐️ 支持手动触发
+  workflow_dispatch:      # 🖐️ 支持手动触发（强制推送更新至仓库）
 
 permissions:
   contents: write
@@ -52,6 +52,14 @@ jobs:
           else
             echo "FORCE_UPDATE=false" >> $GITHUB_ENV
           fi
+          
+          # ==============================================
+          # 【仅修改这里】手动触发时强制更新推送
+          # ==============================================
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "🖐️ 手动触发，强制更新"
+            echo "FORCE_UPDATE=true" >> $GITHUB_ENV
+          fi
 
       - name: 🌐 获取远程文件信息
         id: remote_info
@@ -84,7 +92,7 @@ jobs:
           echo "📊 $(date '+%Y-%m-%d %H:%M:%S') - 版本比对和更新决策..."
           
           if [[ "$FORCE_UPDATE" == "true" ]]; then
-            echo "🔄 文件缺失，强制更新"
+            echo "🔄 文件缺失/手动触发，强制更新"
             echo "UPDATE_NEEDED=true" >> $GITHUB_ENV
           elif [[ -f "version.txt" ]]; then
             LOCAL_VERSION=$(cat version.txt)
