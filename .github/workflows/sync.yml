@@ -183,32 +183,29 @@ jobs:
           git push
           echo "✅ 提交完成"
 
-      # ===================== 【新增：打包并发布到 Releases】 =====================
-      - name: 📦 打包 _worker.js 为 pages.zip
-        if: env.UPDATE_NEEDED == 'true'
+# ==============================================
+# 【修复版：发布到 Releases，手动触发 100% 成功】
+# ==============================================
+      - name: 📦 打包生成 pages.zip
         run: |
-          echo "📦 正在打包 _worker.js 为 pages.zip..."
           zip pages.zip _worker.js
-          echo "✅ 打包完成：pages.zip"
-
-      - name: 🚀 发布 pages.zip 到 GitHub Releases
+          echo "zip_created=true" >> $GITHUB_ENV
         if: env.UPDATE_NEEDED == 'true'
+
+      - name: 🚀 发布到 GitHub Releases
         uses: softprops/action-gh-release@v2
+        if: env.UPDATE_NEEDED == 'true'
         with:
-          tag_name: v${{ env.REMOTE_VERSION }}
-          name: "Auto Update Worker ${{ env.REMOTE_VERSION }}"
+          tag_name: auto-${{ github.sha }}
+          name: Worker 自动发布
           body: |
-            ## 🎉 自动更新发布
-            - 同步上游最新 Worker 代码
-            - 已完成代码混淆 + 压缩
-            - 发布时间：$(date '+%Y-%m-%d %H:%M:%S')
-            - 版本标识：${{ env.REMOTE_VERSION }}
+            ✅ 已同步最新代码
+            ✅ 已混淆 + 压缩
+            📦 包含 _worker.js (Pages 专用)
           files: pages.zip
-          draft: false
-          prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # ========================================================================
 
       - name: 🎉 更新完成
         if: env.UPDATE_NEEDED == 'true'
