@@ -5,7 +5,7 @@
 ## 🚀 快速部署
 
 ### 方式 1：一键部署（推荐）使用worker.js部署
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wpyok168/cmliu)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wpyok168/c2m)
 
 注意防黑关键词不能用cmliu
 
