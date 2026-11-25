@@ -5,9 +5,9 @@ compatibility_flags = ["nodejs_compat"]
 keep_vars = true
 
 # KV 命名空间绑定（必须绑定为 KV）
-kv_namespaces = [
-  { binding = "KV", id = "" }
-]
+#kv_namespaces = [
+#  { binding = "KV", id = "" }
+#]
 
 # 环境变量默认值
 [vars]
